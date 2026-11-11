@@ -1,0 +1,17 @@
+{
+  "description": "Q式小管家微信小程序",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": true,
+    "minified": true
+  },
+  "compileType": "miniprogram",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "appid": "wx7536a24079ec51e1",
+  "projectname": "Q式小管家"
+}
