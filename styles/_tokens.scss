@@ -1,0 +1,21 @@
+// Q式小管家视觉令牌：以设计稿的奶油白、珊瑚红和晴空蓝为基础。
+$q-color-primary: #ff7878;
+$q-color-primary-soft: #ffd6d6;
+$q-color-cream: #fff6e9;
+$q-color-yellow: #ffe7a8;
+$q-color-green: #99ba8b;
+$q-color-blue: #b9d8f7;
+$q-color-text: #5b302c;
+$q-color-text-muted: #8f716d;
+$q-color-surface: #fffaf5;
+$q-radius-sm: 12rpx;
+$q-radius-md: 24rpx;
+$q-radius-lg: 36rpx;
+$q-shadow-soft: 0 8rpx 24rpx rgba(155, 87, 67, .12);
+$q-space-1: 8rpx;
+$q-space-2: 16rpx;
+$q-space-3: 24rpx;
+$q-space-4: 32rpx;
+$q-motion-fast: 160ms;
+$q-motion-normal: 240ms;
+$q-motion-ease: cubic-bezier(.2, .8, .2, 1);

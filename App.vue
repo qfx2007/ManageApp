@@ -26,7 +26,13 @@ export default {
 @import "uview-plus/index.scss";
 
 page {
-    background-color: #f5f5f5;
+    background-color: $q-color-cream;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: $q-color-text;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+view, text, button {
+    box-sizing: border-box;
 }
 </style>

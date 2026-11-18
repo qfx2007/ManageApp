@@ -1,15 +1,17 @@
 @import 'uview-plus/theme.scss';
+// uni.scss 会被注入到各页面样式中，使用别名避免按页面目录解析相对路径。
+@import '@/styles/_tokens.scss';
 
-$uni-color-primary: #007aff;
+$uni-color-primary: $q-color-primary;
 $uni-color-success: #4cd964;
 $uni-color-warning: #f0ad4e;
 $uni-color-error: #dd524d;
-$uni-text-color:#333;
+$uni-text-color:$q-color-text;
 $uni-text-color-inverse:#fff;
 $uni-text-color-grey:#999;
 $uni-text-color-placeholder: #808080;
 $uni-text-color-disable:#c0c0c0;
-$uni-bg-color:#ffffff;
+$uni-bg-color:$q-color-surface;
 $uni-bg-color-grey:#f8f8f8;
 $uni-bg-color-hover:#f1f1f1;
 $uni-bg-color-mask:rgba(0, 0, 0, 0.4);
@@ -20,9 +22,9 @@ $uni-font-size-lg:16px;
 $uni-img-size-sm:20px;
 $uni-img-size-base:26px;
 $uni-img-size-lg:40px;
-$uni-border-radius-sm: 2px;
-$uni-border-radius-base: 3px;
-$uni-border-radius-lg: 6px;
+$uni-border-radius-sm: $q-radius-sm;
+$uni-border-radius-base: $q-radius-md;
+$uni-border-radius-lg: $q-radius-lg;
 $uni-border-radius-circle: 50%;
 $uni-spacing-row-sm: 5px;
 $uni-spacing-row-base: 10px;
