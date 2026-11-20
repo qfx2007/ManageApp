@@ -168,7 +168,7 @@ function quickMood(mood) {
 }
 
 function showReportPreview() {
-    uni.showToast({ title: '年度周报将在下一阶段开放', icon: 'none' })
+    uni.navigateTo({ url: '/pages/report/index' })
 }
 
 async function refreshUser() {

@@ -10,9 +10,15 @@
   "pages": [
     { "path": "pages/index/index" },
     { "path": "pages/remind/remind" },
+    {
+      "path": "pages/report/index",
+      "style": {
+        "navigationBarTitleText": "年度心情周报"
+      }
+    },
     { "path": "pages/cottage/cottage" },
     { "path": "pages/rotate/rotate" },
-    { "path": "pages/diary/diary" },
+    { "path": "pages/diary/index" },
     { "path": "pages/todo/todo" },
     { "path": "pages/mine/mine" }
   ],
@@ -29,7 +35,7 @@
         "text": "好友互动"
       },
       {
-        "pagePath": "pages/diary/diary",
+        "pagePath": "pages/diary/index",
         "text": "日记"
       },
       {
@@ -37,8 +43,5 @@
         "text": "我的"
       }
     ]
-  },
-  "globalStyle": {
-    "navigationBarTitleText": "Q式小管家"
   }
 }
