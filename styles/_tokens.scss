@@ -28,5 +28,10 @@ $q-motion-fast: 160ms;
 $q-motion-normal: 240ms;
 $q-motion-ease: cubic-bezier(.2, .8, .2, 1);
 $q-font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+// 统一字体层级：大标题、正文和小字保持固定视觉比例。
+$q-font-size-large: 35rpx;
+$q-font-size-medium: 30rpx;
+$q-font-size-small: 25rpx;
+
 $q-font-title: 700;
 $q-font-body: 400;

@@ -1,14 +1,45 @@
 {
   "description": "Q式小管家微信小程序",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": "static/images/characters" },
+      { "type": "folder", "value": "static/images/diary" },
+      { "type": "folder", "value": "static/images/decorations" },
+      { "type": "file", "value": "static/images/backgrounds/bg-annual-report.png" },
+      { "type": "file", "value": "static/images/backgrounds/bg-diary-desktop.png" },
+      { "type": "file", "value": "static/images/backgrounds/bg-diary-editor.png" },
+      { "type": "file", "value": "static/images/backgrounds/bg-diary-paper.png" },
+      { "type": "file", "value": "static/images/backgrounds/bg-friends.png" },
+      { "type": "file", "value": "static/images/backgrounds/bg-mood-room.png" },
+      { "type": "file", "value": "static/images/backgrounds/bg-profile-settings.png" },
+      { "type": "file", "value": "static/images/backgrounds/bg-roulette.png" },
+      { "type": "file", "value": "static/images/icons/book-blue.png" },
+      { "type": "file", "value": "static/images/icons/books-stack.png" },
+      { "type": "file", "value": "static/images/icons/checklist.png" },
+      { "type": "file", "value": "static/images/icons/flower-vase.png" },
+      { "type": "file", "value": "static/images/icons/folder-draft.png" },
+      { "type": "file", "value": "static/images/icons/folder-note.png" },
+      { "type": "file", "value": "static/images/icons/folder.png" },
+      { "type": "file", "value": "static/images/icons/gift-box.png" },
+      { "type": "file", "value": "static/images/icons/gift-happy-star.png" },
+      { "type": "file", "value": "static/images/icons/gift-rainbow-rain.png" },
+      { "type": "file", "value": "static/images/icons/mail.png" },
+      { "type": "file", "value": "static/images/icons/potted-plant.png" },
+      { "type": "file", "value": "static/images/icons/rose.png" },
+      { "type": "file", "value": "static/images/icons/weather-cloudy.png" },
+      { "type": "file", "value": "static/images/icons/weather-partly-cloudy.png" },
+      { "type": "file", "value": "static/images/icons/weather-rain.png" },
+      { "type": "file", "value": "static/images/icons/weather-snow.png" },
+      { "type": "file", "value": "static/images/icons/weather-sunny.png" }
+    ],
     "include": []
   },
   "setting": {
     "urlCheck": false,
     "es6": true,
     "postcss": true,
-    "minified": true
+    "minified": true,
+    "lazyCodeLoading": "requiredComponents"
   },
   "compileType": "miniprogram",
   "cloudfunctionRoot": "cloudfunctions/",

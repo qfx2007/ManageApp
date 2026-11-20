@@ -3,7 +3,7 @@
 		<!-- 首页静态背景 -->
 		<image
 			class="home-background"
-			src="/static/images/backgrounds/bg-home.png"
+			src="/static/images/backgrounds/bg-home.jpg"
 			mode="widthFix"
 		/>
         <view class="hero-card">
@@ -420,7 +420,7 @@ function formatDate(date) {
         place-items: center;
         align-content: center;
         border-radius: 24rpx;
-        font-size: 35rpx;
+        font-size: $q-font-size-large;
         font-weight: 600;
         box-shadow: 0 8rpx 18rpx rgba(185, 108, 93, 0.1);
         transition: transform 0.16s ease;
@@ -455,13 +455,13 @@ function formatDate(date) {
         align-items: center;
         justify-content: space-between;
         margin: 70rpx 4rpx 14rpx;
-        font-size: 35rpx;
+        font-size: $q-font-size-large;
         font-weight: 700;
     }
 
     .muted {
         color: #aa8078;
-        font-size: 25rpx;
+        font-size: $q-font-size-small;
         font-weight: 400;
     }
 
@@ -510,7 +510,7 @@ function formatDate(date) {
         grid-template-columns: repeat(7, 1fr);
         gap: 8rpx;
         align-items: end;
-		font-size: 25rpx;
+		font-size: $q-font-size-small;
 		font-weight: 600;
     }
 
@@ -581,14 +581,14 @@ function formatDate(date) {
                 display: block;
 
                 &:first-child {
-                    font-size: 35rpx;
+                    font-size: $q-font-size-large;
                     font-weight: 700;
                 }
 
                 &:last-child {
                     margin-top: 12rpx;
                     color: #a27b72;
-                    font-size: 25rpx;
+                    font-size: $q-font-size-small;
                 }
             }
         }
@@ -663,7 +663,7 @@ function formatDate(date) {
 
     .option-label {
         color: #333;
-        font-size: 30rpx;
+        font-size: $q-font-size-medium;
     }
 
     .option-arrow {
