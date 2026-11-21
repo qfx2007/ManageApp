@@ -30,7 +30,7 @@ assert.equal(mood.buildCompletedWeeks([...week.slice(0, 6), week[0]]).length, 0)
 let openid = 'owner-a'
 let failWrite = false
 let sequence = 0
-const stores = { users: [{ _id: 'profile-a', _openid: openid, username: '用户甲', avatar: '' },
+const stores = { users: [{ _id: 'profile-a', _openid: openid, username: '用户甲', avatar: '', signature: '' },
     { _id: 'profile-b', _openid: 'owner-b', username: '用户乙', avatar: '' }], moods: [], diaries: [], tasks: [] }
 const local = new Map([['currentUser', { _id: 'profile-a' }]])
 const clone = value => JSON.parse(JSON.stringify(value))
@@ -94,6 +94,12 @@ const cloud = loadModule('utils/cloud.js', globals, {
 async function verify() {
     assert.equal((await cloud.loadCurrentUser())._id, 'profile-a')
     assert.equal(await cloud.loginUser('用户乙'), null)
+    // 编辑资料需同时更新云端与本地缓存，并兼容签名长度边界。
+    const profile = await cloud.updateUserProfile({ username: '用户甲新昵称', signature: '今天也要好好生活', avatar: 'cloud://avatar-new' })
+    assert.equal(profile.signature, '今天也要好好生活')
+    assert.equal(stores.users[0].username, '用户甲新昵称')
+    assert.equal(local.get('currentUser').avatar, 'cloud://avatar-new')
+    await assert.rejects(cloud.updateUserProfile({ username: '用户甲', signature: '长'.repeat(31) }), /30/)
     const today = mood.beijingDate()
     await cloud.saveMoodToCloud(today, '很开心')
     await cloud.saveMoodToCloud(today, '不高兴')

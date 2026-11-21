@@ -1,8 +1,8 @@
 <template>
     <view class="page">
-        <!-- 蓝色头部区域 -->
+        <!-- 暖色资料头部仅展示信息，资料修改统一进入编辑页。 -->
         <view class="header">
-            <view class="avatar-wrap" @click="chooseAvatar">
+            <view class="avatar-wrap">
                 <image
                     v-if="avatarSrc"
                     :src="avatarSrc"
@@ -10,20 +10,23 @@
                     class="avatar-img"
                 />
                 <text v-else class="avatar-text">{{ avatarText }}</text>
-                <view class="avatar-edit">
-                    <text class="edit-icon">+</text>
-                </view>
             </view>
             <text class="username">{{ currentUser ? currentUser.username : '未登录' }}</text>
-            <text class="user-desc">{{ currentUser ? '点击头像可更换' : '登录后可同步数据' }}</text>
+            <text class="user-desc">{{ profileDescription }}</text>
         </view>
 
         <!-- 功能列表 -->
         <view class="menu-list">
+            <!-- 编辑资料入口放在转盘上方，未登录时引导登录。 -->
+            <view class="menu-item" @click="goToProfile">
+                <up-icon name="edit-pen" color="#ff7878" size="28" class="list-icons"></up-icon>
+                <text class="menu-label">编辑资料</text>
+                <up-icon name="arrow-right" color="#c9aaa4" size="16"></up-icon>
+            </view>
             <view class="menu-item" @click="goToRotate">
-                <uni-icons type="gear" size="30" class="list-icons"></uni-icons>
-                <text class="menu-label"> 转转盘</text>
-                <up-icon name="arrow-right" color="#c8c9cc" size="16"></up-icon>
+                <uni-icons type="gear" size="28" color="#e5a43b" class="list-icons"></uni-icons>
+                <text class="menu-label">转转盘</text>
+                <up-icon name="arrow-right" color="#c9aaa4" size="16"></up-icon>
             </view>
             <view class="menu-item" @click="handleLoginOrLogout">
                 <up-icon name="account" color="#333333" size="30" class="list-icons"></up-icon>
@@ -88,15 +91,10 @@
 
 <script>
 import {
-    isCloudAvailable,
-    getCloudEnvId,
     initCloud,
     registerUser,
     loginUser,
-    loadCurrentUser,
-    uploadAvatarToCloud,
-    saveAvatarToCloud,
-    deleteAvatarFile
+    loadCurrentUser
 } from '@/utils/cloud.js'
 
 export default {
@@ -116,45 +114,16 @@ export default {
         avatarText() {
             if (!this.currentUser || !this.currentUser.username) return '?'
             return this.currentUser.username.slice(0, 1)
+        },
+        profileDescription() {
+            if (!this.currentUser) return '登录后可同步数据'
+            return this.currentUser.signature || '记录生活，也记录此刻的自己'
         }
     },
     onShow() {
         this.refreshUser()
     },
     methods: {
-        chooseAvatar() {
-            if (!this.currentUser) {
-                this.showLoginPopup = true
-                return
-            }
-            uni.chooseImage({
-                count: 1,
-                sourceType: ['album'],
-                success: async (res) => {
-                    const tempPath = res.tempFilePaths[0]
-                    try {
-                        uni.showLoading({ title: '上传中...' })
-                        const oldFileId = (this.currentUser && this.currentUser.avatar) || ''
-                        const fileId = await uploadAvatarToCloud(tempPath)
-                        if (!fileId) {
-                            throw new Error('上传失败')
-                        }
-                        await saveAvatarToCloud(fileId)
-                        await deleteAvatarFile(oldFileId)
-                        this.avatarSrc = fileId
-                        if (this.currentUser) {
-                            this.currentUser.avatar = fileId
-                            uni.setStorageSync('currentUser', this.currentUser)
-                        }
-                        uni.showToast({ title: '头像已更新', icon: 'success' })
-                    } catch (e) {
-                        uni.showToast({ title: e.message || '上传失败', icon: 'none' })
-                    } finally {
-                        uni.hideLoading()
-                    }
-                }
-            })
-        },
         async refreshUser() {
             try {
                 this.currentUser = await loadCurrentUser()
@@ -166,6 +135,13 @@ export default {
         },
         goToRotate() {
             uni.navigateTo({ url: '/pages/rotate/rotate' })
+        },
+        goToProfile() {
+            if (!this.currentUser) {
+                this.showLoginPopup = true
+                return
+            }
+            uni.navigateTo({ url: '/pages/profile/index' })
         },
         handleLoginOrLogout() {
             if (this.currentUser) {
@@ -244,102 +220,54 @@ export default {
 <style lang="scss" scoped>
 .page {
     min-height: 100vh;
-    background: #f5f5f5;
-}
+    background: linear-gradient(180deg, $q-color-cream 0, $q-color-surface 55%, #fff 100%);
 
-.header {
-    background: linear-gradient(135deg, #1677ff, #69b1ff);
-    padding: 80rpx 0 60rpx;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
+    .header {
+        padding: 88rpx 32rpx 64rpx;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: radial-gradient(circle at 50% 18%, #fff 0, #ffe8d8 48%, $q-color-primary-soft 100%);
 
-.avatar-wrap {
-    width: 160rpx;
-    height: 160rpx;
-    border-radius: 50%;
-    background: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
-    margin-bottom: 24rpx;
-}
+        .avatar-wrap {
+            width: 168rpx;
+            height: 168rpx;
+            margin-bottom: $q-space-3;
+            border: 8rpx solid rgba(255, 255, 255, .9);
+            border-radius: 50%;
+            background: $q-color-cream;
+            box-shadow: $q-shadow-soft;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
 
-.avatar-img {
-    width: 100%;
-    height: 100%;
-}
+            .avatar-img { width: 100%; height: 100%; }
+            .avatar-text { font-size: 64rpx; color: $q-color-primary; font-weight: 700; }
+        }
 
-.avatar-text {
-    font-size: 64rpx;
-    color: #1677ff;
-    font-weight: bold;
-}
+        .username { margin-bottom: $q-space-1; font-size: 38rpx; font-weight: 700; color: $q-color-text; }
+        .user-desc { max-width: 560rpx; font-size: $q-font-size-small; color: $q-color-text-muted; text-align: center; line-height: 1.5; }
+    }
 
-.avatar-edit {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: rgba(0, 0, 0, 0.5);
-    padding: 8rpx 0;
-    display: flex;
-    justify-content: center;
-}
+    .menu-list {
+        // 功能入口保持传统整行列表排列，不使用独立卡片容器。
+        margin-top: 24rpx;
+        background: #fff;
 
-.edit-icon {
-    font-size: 28rpx;
-    color: #fff;
-}
+        .menu-item {
+            display: flex;
+            align-items: center;
+            min-height: 100rpx;
+            padding: 0 $q-space-4;
+            border-bottom: 1rpx solid #f5dfd6;
 
-.username {
-    font-size: 36rpx;
-    font-weight: bold;
-    color: #fff;
-    margin-bottom: 8rpx;
-}
-
-.user-desc {
-    font-size: 24rpx;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.menu-list {
-    background: #fff;
-    margin-top: 24rpx;
-	.list-icons{
-		margin-right: 8rpx;
-	}
-}
-
-.menu-item {
-    display: flex;
-    align-items: center;
-    padding: 30rpx 32rpx;
-    border-bottom: 1rpx solid #f0f0f0;
-}
-
-.menu-item:last-child {
-    border-bottom: none;
-}
-
-.menu-icon {
-    font-size: 40rpx;
-    margin-right: 24rpx;
-}
-
-.menu-label {
-    flex: 1;
-    font-size: 30rpx;
-    color: #333;
-}
-
-.menu-arrow {
-    font-size: 36rpx;
-    color: #ccc;
+            &:last-child { border-bottom: none; }
+            &:active { background: $q-color-cream; }
+            .list-icons { margin-right: $q-space-2; }
+            .menu-label { flex: 1; font-size: $q-font-size-medium; color: $q-color-text; }
+        }
+    }
 }
 
 .popup-mask {
@@ -448,7 +376,7 @@ export default {
 }
 
 .popup-btn.confirm {
-    background: #1677ff;
+    background: $q-color-primary;
     color: #fff;
 }
 

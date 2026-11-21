@@ -27,7 +27,7 @@ function requireUser() {
 
 function ownProfiles() {
     return getDb().collection(USERS_COLLECTION).where(ownerCondition)
-        .field({ _id: true, username: true, avatar: true })
+        .field({ _id: true, username: true, avatar: true, signature: true })
 }
 
 export async function syncTasksToCloud() {
@@ -131,7 +131,9 @@ export async function registerUser(username) {
     if (mine.data.length > 0) {
         const user = {
             _id: mine.data[0]._id,
-            username: mine.data[0].username
+            username: mine.data[0].username,
+            avatar: mine.data[0].avatar || '',
+            signature: mine.data[0].signature || ''
         }
         uni.setStorageSync('currentUser', user)
         throw new Error(`当前微信已注册为「${user.username}」`)
@@ -146,7 +148,7 @@ export async function registerUser(username) {
         }
     })
 
-    const user = { _id: res._id, username: name, avatar: '' }
+    const user = { _id: res._id, username: name, avatar: '', signature: '' }
     uni.setStorageSync('currentUser', user)
     return user
 }
@@ -170,7 +172,8 @@ export async function loginUser(username) {
     const user = {
         _id: record._id,
         username: record.username,
-        avatar: record.avatar || ''
+        avatar: record.avatar || '',
+        signature: record.signature || ''
     }
     uni.setStorageSync('currentUser', user)
     return user
@@ -195,7 +198,8 @@ export async function loadCurrentUser() {
     const user = {
         _id: res.data[0]._id,
         username: res.data[0].username,
-        avatar: res.data[0].avatar || ''
+        avatar: res.data[0].avatar || '',
+        signature: res.data[0].signature || ''
     }
     uni.setStorageSync('currentUser', user)
     return user
@@ -221,19 +225,29 @@ export async function deleteAvatarFile(fileId) {
     } catch (_) {}
 }
 
-export async function saveAvatarToCloud(fileId) {
-    const user = uni.getStorageSync('currentUser')
-    if (!user || !user._id || !isCloudAvailable() || !CLOUD_ENV_ID) {
-        return false
+// 统一保存编辑资料页的字段，避免昵称、签名和头像分别更新造成界面状态不一致。
+export async function updateUserProfile({ username, signature = '', avatar = '' }) {
+    const user = requireUser()
+    const name = validateUsername(username)
+    const normalizedSignature = signature.trim()
+    if (normalizedSignature.length > 30) {
+        throw new Error('个性签名不能超过 30 个字符')
     }
     await initCloud()
-    await getDb().collection(USERS_COLLECTION).doc(user._id).update({
+    const result = await getDb().collection(USERS_COLLECTION).doc(user._id).update({
         data: {
-            avatar: fileId,
+            username: name,
+            signature: normalizedSignature,
+            avatar,
             updateTime: Date.now()
         }
     })
-    return true
+    if (result.stats.updated !== 1) {
+        throw new Error('资料已变化，请重新加载')
+    }
+    const updatedUser = { ...user, username: name, signature: normalizedSignature, avatar }
+    uni.setStorageSync('currentUser', updatedUser)
+    return updatedUser
 }
 
 // 每次只保存当天心情；联合唯一索引阻止并发产生同日重复记录。

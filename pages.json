@@ -18,11 +18,19 @@
     { "path": "pages/rotate/rotate" },
     { "path": "pages/diary/index" },
     { "path": "pages/todo/todo" },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "编辑资料",
+        "navigationBarBackgroundColor": "#fff6e9",
+        "navigationBarTextStyle": "black"
+      }
+    },
     { "path": "pages/mine/mine" }
   ],
   "tabBar": {
     "color": "#666",
-    "selectedColor": "#1677ff",
+    "selectedColor": "#ff7878",
     "list": [
       {
         "pagePath": "pages/index/index",
