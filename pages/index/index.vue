@@ -49,6 +49,7 @@
                     <up-button
                         v-for="mood in moodOptions"
                         :key="mood"
+                        :disabled="savingMood"
                         @click="saveMood(mood)"
                         class="mood-btn"
                     >{{ mood }}</up-button>
@@ -99,19 +100,17 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import {
-    syncMoodToCloud,
+    saveMoodToCloud,
     fetchMoodData,
-    isCloudAvailable,
     initCloud,
     loadCurrentUser,
     loginUser,
     registerUser
 } from '@/utils/cloud.js'
+import { beijingDate, shiftDate } from '@/utils/mood'
 
 const moodOptions = ['很开心', '不高兴', '就这样']
 const dailyRecords = ref([])
-const weeklyHistory = ref([])
-const weeklyStats = ref({ '很开心': 0, '不高兴': 0, '就这样': 0 })
 const todayMoodLabel = ref('暂无数据')
 const showPopup = ref(false)
 const currentUser = ref(null)
@@ -120,6 +119,10 @@ const showRegisterPopup = ref(false)
 const isRegisterMode = ref(true)
 const inputUsername = ref('')
 const loading = ref(false)
+// 上传期间阻止连点，成功提示以云端确认为准。
+const savingMood = ref(false)
+// 防止进入页面时较慢的旧请求覆盖刚刚保存的心情。
+let moodLoadSequence = 0
 
 const moodCards = computed(() => [
     { mood: '很开心', icon: '/static/images/icons/mood-happy.png', className: 'happy' },
@@ -129,7 +132,6 @@ const moodCards = computed(() => [
 
 const chartDays = computed(() => {
     const result = []
-    const today = new Date()
     const moodMeta = {
         // 三种心情使用不同高度，与左侧三色刻度从高到低对应。
         '很开心': { className: 'bar-happy', height: 100 },
@@ -137,15 +139,12 @@ const chartDays = computed(() => {
         '不高兴': { className: 'bar-sad', height: 32 }
     }
     for (let offset = 6; offset >= 0; offset -= 1) {
-        const date = new Date(today)
-        date.setHours(0, 0, 0, 0)
-        date.setDate(today.getDate() - offset)
-        const dateString = formatDate(date)
+        const dateString = shiftDate(beijingDate(), -offset)
         const record = dailyRecords.value.find((item) => item.date === dateString)
         const meta = record ? moodMeta[record.mood] : null
         result.push({
             date: dateString,
-            label: ['日', '一', '二', '三', '四', '五', '六'][date.getDay()],
+            label: ['日', '一', '二', '三', '四', '五', '六'][new Date(`${dateString}T00:00:00Z`).getUTCDay()],
             height: meta ? meta.height : 12,
             moodClass: meta ? meta.className : 'bar-empty',
         })
@@ -212,6 +211,7 @@ async function handleLoginSubmit() {
         if (isRegisterMode.value) {
             currentUser.value = await registerUser(inputUsername.value)
             closeRegisterPopup()
+            await initData()
             uni.showToast({ title: '注册成功', icon: 'success' })
             return
         }
@@ -222,6 +222,7 @@ async function handleLoginSubmit() {
         }
         currentUser.value = user
         closeRegisterPopup()
+        await initData()
         uni.showToast({ title: '登录成功', icon: 'success' })
     } catch (error) {
         uni.showToast({ title: error.message || '操作失败', icon: 'none' })
@@ -230,92 +231,24 @@ async function handleLoginSubmit() {
     }
 }
 
+// 首页仅加载近 7 天；加载失败不伪装成无记录。
 async function initData() {
-    let daily = []
-    let weekly = null
-    if (isCloudAvailable()) {
-        try {
-            const data = await fetchMoodData()
-            if (data) {
-                daily = data.dailyRecords || []
-                weekly = data.weeklyHistory || null
-            }
-        } catch (error) {
-            // 云端不可用时保留空数据，页面仍可正常展示。
-        }
+    const sequence = ++moodLoadSequence
+    if (!currentUser.value) {
+        dailyRecords.value = []
+        todayMoodLabel.value = '暂无数据'
+        return
     }
-    dailyRecords.value = daily
-    if (!weekly || weekly.length === 0) {
-        weeklyHistory.value = []
-        if (daily.length > 0) generateWeeklyHistory()
-    } else {
-        weeklyHistory.value = weekly
+    try {
+        const data = await fetchMoodData()
+        if (sequence !== moodLoadSequence) return
+        dailyRecords.value = data.dailyRecords
+        todayMoodLabel.value = dailyRecords.value.find(item => item.date === beijingDate())?.mood || '暂无数据'
+    } catch (error) {
+        if (sequence !== moodLoadSequence) return
+        todayMoodLabel.value = '读取失败'
+        uni.showToast({ title: '心情读取失败，请重新进入重试', icon: 'none' })
     }
-    calculateWeeklyStats()
-}
-
-function calculateWeeklyStats() {
-    const now = new Date()
-    const oneWeekAgo = new Date()
-    oneWeekAgo.setDate(now.getDate() - 7)
-    const stats = { '很开心': 0, '不高兴': 0, '就这样': 0 }
-    const currentWeekRecords = dailyRecords.value.filter((record) => {
-        const recordDate = new Date(record.date)
-        return recordDate >= oneWeekAgo && recordDate <= now
-    })
-    currentWeekRecords.forEach((record) => {
-        if (stats[record.mood] !== undefined) stats[record.mood] += 1
-    })
-    weeklyStats.value = stats
-    const todayRecord = dailyRecords.value.find((record) => record.date === formatDate(now))
-    todayMoodLabel.value = todayRecord ? todayRecord.mood : '暂无数据'
-}
-
-function generateWeeklyHistory() {
-    if (dailyRecords.value.length === 0) return
-    const dates = [...new Set(dailyRecords.value.map((record) => record.date))]
-        .sort((a, b) => new Date(b) - new Date(a))
-    const newWeeklyHistory = []
-    let tempWeekRecords = []
-    let weekEndDate = new Date()
-    dates.forEach((dateString) => {
-        const currentDate = new Date(dateString)
-        if (tempWeekRecords.length === 0) weekEndDate = currentDate
-        const diffDays = Math.ceil(Math.abs(weekEndDate - currentDate) / (1000 * 60 * 60 * 24))
-        if (diffDays < 7) {
-            tempWeekRecords.push(dailyRecords.value.find((record) => record.date === dateString))
-            return
-        }
-        settleWeek(tempWeekRecords, weekEndDate, newWeeklyHistory)
-        tempWeekRecords = [dailyRecords.value.find((record) => record.date === dateString)]
-        weekEndDate = currentDate
-    })
-    if (tempWeekRecords.length > 0) settleWeek(tempWeekRecords, weekEndDate, newWeeklyHistory)
-    weeklyHistory.value = newWeeklyHistory
-}
-
-function settleWeek(records, endDate, historyList) {
-    const stats = { '很开心': 0, '不高兴': 0, '就这样': 0 }
-    records.forEach((record) => {
-        if (stats[record.mood] !== undefined) stats[record.mood] += 1
-    })
-    let maxCount = -1
-    let finalMood = '就这样'
-    Object.keys(stats).forEach((mood) => {
-        if (stats[mood] > maxCount) {
-            maxCount = stats[mood]
-            finalMood = mood
-        } else if (stats[mood] === maxCount) {
-            if (mood === '很开心' || (finalMood === '不高兴' && mood === '就这样')) finalMood = mood
-        }
-    })
-    const startDate = new Date(endDate)
-    startDate.setDate(endDate.getDate() - 6)
-    historyList.push({
-        weekLabel: `第${historyList.length + 1}周`,
-        dateRange: `${formatDate(startDate)} 至 ${formatDate(endDate)}`,
-        finalMood
-    })
 }
 
 function selectMood() {
@@ -330,41 +263,23 @@ function closePopup() {
     showPopup.value = false
 }
 
-function saveMood(mood) {
-    const dateString = formatDate(new Date())
-    const records = [...dailyRecords.value]
-    const existingIndex = records.findIndex((record) => record.date === dateString)
-    if (existingIndex !== -1) {
-        records[existingIndex] = { ...records[existingIndex], mood }
+// 先等待数据库保存，失败保留原显示及弹窗，允许用户重试。
+async function saveMood(mood) {
+    if (savingMood.value) return
+    savingMood.value = true
+    try {
+        const date = beijingDate()
+        await saveMoodToCloud(date, mood)
+        moodLoadSequence += 1
+        dailyRecords.value = [{ date, mood }, ...dailyRecords.value.filter(item => item.date !== date)]
+        todayMoodLabel.value = mood
         uni.showToast({ title: '今日心情已更新', icon: 'success' })
-    } else {
-        records.unshift({ date: dateString, mood })
-        uni.showToast({ title: '心情记录成功', icon: 'success' })
+        closePopup()
+    } catch (error) {
+        uni.showToast({ title: error.message || '保存失败，请重试', icon: 'none' })
+    } finally {
+        savingMood.value = false
     }
-    dailyRecords.value = records
-    calculateWeeklyStats()
-    updateCurrentWeekInHistory()
-    uploadMoodData()
-    closePopup()
-}
-
-function updateCurrentWeekInHistory() {
-    generateWeeklyHistory()
-}
-
-function uploadMoodData() {
-    syncMoodToCloud(dailyRecords.value, weeklyHistory.value)
-        .then((ok) => {
-            if (ok) uni.setStorageSync('lastMoodSyncTime', Date.now())
-        })
-        .catch(() => {})
-}
-
-function formatDate(date) {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
 }
 </script>
 

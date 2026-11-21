@@ -11,7 +11,6 @@ export interface CurrentUserCache {
   _id: string
   username?: string
   avatar?: string
-  swiperImages?: string[]
 }
 
 export interface DiaryNote {

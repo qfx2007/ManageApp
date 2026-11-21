@@ -1,4 +1,5 @@
-import { CLOUD_ENV_ID, USERS_COLLECTION, TASKS_COLLECTION } from '@/config/cloud.js'
+import { CLOUD_ENV_ID, USERS_COLLECTION, TASKS_COLLECTION, MOODS_COLLECTION, DIARIES_COLLECTION } from '@/config/cloud.js'
+import { beijingDate, shiftDate } from '@/utils/mood'
 
 let db = null
 let inited = false
@@ -16,31 +17,17 @@ export function getCloudEnvId() {
     return CLOUD_ENV_ID
 }
 
-let cachedOpenId = null
-
-export async function getCloudUserId() {
-    if (cachedOpenId) return cachedOpenId
-    const stored = uni.getStorageSync('cloudUserId')
-    if (stored) {
-        cachedOpenId = stored
-        return stored
-    }
-    try {
-        await initCloud()
-        const res = await wx.cloud.callFunction({ name: 'getOpenId' })
-        const id = res?.result?.openid
-        if (id) {
-            cachedOpenId = id
-            uni.setStorageSync('cloudUserId', id)
-            return id
-        }
-    } catch (_) {}
+// 归属由微信 SDK 注入，身份查询不再将用户文档 ID 当成 OPENID。
+const ownerCondition = { _openid: '{openid}' }
+function requireUser() {
     const user = uni.getStorageSync('currentUser')
-    if (user?._id) {
-        cachedOpenId = user._id
-        return user._id
-    }
-    return null
+    if (uni.getStorageSync('isLoggedOut') || !user?._id) throw new Error('请先在“我的”中登录')
+    return user
+}
+
+function ownProfiles() {
+    return getDb().collection(USERS_COLLECTION).where(ownerCondition)
+        .field({ _id: true, username: true, avatar: true })
 }
 
 export async function syncTasksToCloud() {
@@ -107,7 +94,7 @@ export function initCloud() {
         env: CLOUD_ENV_ID,
         traceUser: true
     })
-    db = wx.cloud.database()
+    db = wx.cloud.database({ env: CLOUD_ENV_ID })
     inited = true
     return Promise.resolve()
     // #endif
@@ -139,12 +126,8 @@ export async function registerUser(username) {
     const name = validateUsername(username)
     const database = getDb()
 
-    const duplicate = await database.collection(USERS_COLLECTION).where({ username: name }).count()
-    if (duplicate.total > 0) {
-        throw new Error('用户名已被占用，请换一个')
-    }
-
-    const mine = await database.collection(USERS_COLLECTION).get()
+    // 昵称仅作显示和本人确认，私人集合不跨用户枚举昵称。
+    const mine = await ownProfiles().get()
     if (mine.data.length > 0) {
         const user = {
             _id: mine.data[0]._id,
@@ -158,14 +141,12 @@ export async function registerUser(username) {
         data: {
             username: name,
             avatar: '',
-            swiperImages: ['', '', ''],
-            weeklyHistory: [],
-            dailyRecords: [],
+            createdAt: database.serverDate(),
             updateTime: Date.now()
         }
     })
 
-    const user = { _id: res._id, username: name, avatar: '', swiperImages: ['', '', ''] }
+    const user = { _id: res._id, username: name, avatar: '' }
     uni.setStorageSync('currentUser', user)
     return user
 }
@@ -173,10 +154,9 @@ export async function registerUser(username) {
 export async function loginUser(username) {
     await initCloud()
     const name = validateUsername(username)
-    const database = getDb()
 
-    // 权限模型下 .get() 只返回当前微信号自己的记录
-    const res = await database.collection(USERS_COLLECTION).get()
+    // 查询显式携带归属条件，配合服务端 PRIVATE 权限隔离用户。
+    const res = await ownProfiles().get()
 
     if (res.data.length === 0) {
         return null   // 当前微信号未注册
@@ -190,8 +170,7 @@ export async function loginUser(username) {
     const user = {
         _id: record._id,
         username: record.username,
-        avatar: record.avatar || '',
-        swiperImages: (record.swiperImages && record.swiperImages.slice()) || ['', '', '']
+        avatar: record.avatar || ''
     }
     uni.setStorageSync('currentUser', user)
     return user
@@ -206,8 +185,7 @@ export async function loadCurrentUser() {
     }
 
     await initCloud()
-    const database = getDb()
-    const res = await database.collection(USERS_COLLECTION).get()
+    const res = await ownProfiles().get()
 
     if (res.data.length === 0) {
         uni.removeStorageSync('currentUser')
@@ -217,8 +195,7 @@ export async function loadCurrentUser() {
     const user = {
         _id: res.data[0]._id,
         username: res.data[0].username,
-        avatar: res.data[0].avatar || '',
-        swiperImages: (res.data[0].swiperImages && res.data[0].swiperImages.slice()) || ['', '', '']
+        avatar: res.data[0].avatar || ''
     }
     uni.setStorageSync('currentUser', user)
     return user
@@ -244,41 +221,6 @@ export async function deleteAvatarFile(fileId) {
     } catch (_) {}
 }
 
-export async function uploadSwiperToCloud(tempPath, index) {
-    const user = uni.getStorageSync('currentUser')
-    const uid = (user && user._id) || null
-    if (!uid) return null
-    await initCloud()
-    const res = await wx.cloud.uploadFile({
-        cloudPath: `user_bg/${uid}/home_${index + 1}_${Date.now()}.png`,
-        filePath: tempPath
-    })
-    return res.fileID
-}
-
-export async function deleteSwiperFile(fileId) {
-    if (!fileId || !isCloudAvailable() || !CLOUD_ENV_ID) return
-    try {
-        await initCloud()
-        await wx.cloud.deleteFile({ fileList: [fileId] })
-    } catch (_) {}
-}
-
-export async function saveSwiperImagesToCloud(swiperList) {
-    const user = uni.getStorageSync('currentUser')
-    if (!user || !user._id || !isCloudAvailable() || !CLOUD_ENV_ID) {
-        return false
-    }
-    await initCloud()
-    await getDb().collection(USERS_COLLECTION).doc(user._id).update({
-        data: {
-            swiperImages: swiperList,
-            updateTime: Date.now()
-        }
-    })
-    return true
-}
-
 export async function saveAvatarToCloud(fileId) {
     const user = uni.getStorageSync('currentUser')
     if (!user || !user._id || !isCloudAvailable() || !CLOUD_ENV_ID) {
@@ -294,40 +236,126 @@ export async function saveAvatarToCloud(fileId) {
     return true
 }
 
-export async function syncMoodToCloud(dailyRecords = [], weeklyHistory = []) {
-    const user = uni.getStorageSync('currentUser')
-    if (!user || !user._id || !isCloudAvailable() || !CLOUD_ENV_ID) {
-        return false
-    }
-
+// 每次只保存当天心情；联合唯一索引阻止并发产生同日重复记录。
+export async function saveMoodToCloud(date, mood) {
+    requireUser()
+    if (date !== beijingDate() || !['很开心', '就这样', '不高兴'].includes(mood)) throw new Error('心情或日期不正确')
     await initCloud()
-    const database = getDb()
-
-    await database.collection(USERS_COLLECTION).doc(user._id).update({
-        data: {
-            weeklyHistory,
-            dailyRecords,
-            updateTime: Date.now()
-        }
-    })
-    return true
+    await saveDailyDocument(MOODS_COLLECTION, date, { mood })
+    moodVersion += 1
+    moodCache.clear()
 }
 
-export async function fetchMoodData() {
-    const user = uni.getStorageSync('currentUser')
-    if (!user || !user._id || !isCloudAvailable() || !CLOUD_ENV_ID) {
-        return null
+function validateDate(date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) {
+        throw new Error('日期格式不正确')
     }
+}
 
-    await initCloud()
+// SDK 写入不传 _openid；重复插入只在确认同日记录已存在后改为更新。
+async function saveDailyDocument(collectionName, date, content) {
+    validateDate(date)
     const database = getDb()
-    const res = await database.collection(USERS_COLLECTION).doc(user._id).get()
+    const collection = database.collection(collectionName)
+    const query = { ...ownerCondition, date }
+    const existing = await collection.where(query).limit(1).get()
+    const data = { ...content, updatedAt: database.serverDate() }
+    const updateData = content.note ? { ...data, note: database.command.set(content.note) } : data
+    if (existing.data.length) {
+        const result = await collection.doc(existing.data[0]._id).update({ data: updateData })
+        if (result.stats.updated !== 1) throw new Error('记录已变化，请重新加载')
+        return
+    }
+    try {
+        await collection.add({ data: { ...data, date, createdAt: database.serverDate() } })
+    } catch (error) {
+        // 仅处理唯一索引竞争，网络异常保留给界面提示重试。
+        if (!/duplicate|E11000/i.test(error.errMsg || error.message || '')) throw error
+        const concurrent = await collection.where(query).limit(1).get()
+        if (!concurrent.data.length) throw error
+        const result = await collection.doc(concurrent.data[0]._id).update({ data: updateData })
+        if (result.stats.updated !== 1) throw new Error('记录已变化，请重新加载')
+    }
+}
 
-    if (res.data) {
-        return {
-            dailyRecords: res.data.dailyRecords || [],
-            weeklyHistory: res.data.weeklyHistory || []
+// 范围与用户共同组成短时缓存键；首页读 7 天，周报只读近一年。
+const moodCache = new Map()
+let moodVersion = 0
+export async function fetchMoodData(start = shiftDate(beijingDate(), -6), end = beijingDate()) {
+    const user = requireUser()
+    validateDate(start)
+    validateDate(end)
+    if (start > end) throw new Error('日期范围不正确')
+    const key = `${user._id}:${start}:${end}`
+    const cached = moodCache.get(key)
+    if (cached && Date.now() - cached.time < 60000) return { dailyRecords: cached.records }
+    await initCloud()
+    const version = moodVersion
+    const database = getDb()
+    const records = []
+    let cursor = shiftDate(end, 1)
+    while (true) {
+        const result = await database.collection(MOODS_COLLECTION).where({ ...ownerCondition,
+            date: database.command.gte(start).and(database.command.lt(cursor))
+        }).orderBy('date', 'desc').field({ date: true, mood: true }).limit(20).get()
+        records.push(...result.data.map(({ date, mood }) => ({ date, mood })))
+        if (result.data.length < 20) break
+        cursor = result.data[result.data.length - 1].date
+    }
+    if (version === moodVersion) {
+        if (moodCache.size >= 8) moodCache.delete(moodCache.keys().next().value)
+        moodCache.set(key, { time: Date.now(), records })
+    }
+    return { dailyRecords: records }
+}
+
+// 日记使用日期游标分页，保留现有四张纸内容，整篇删除直接删除云文档。
+export async function fetchDiaryPage(before = '') {
+    requireUser()
+    await initCloud()
+    const condition = { ...ownerCondition }
+    if (before) { validateDate(before); condition.date = getDb().command.lt(before) }
+    const result = await getDb().collection(DIARIES_COLLECTION).where(condition).orderBy('date', 'desc').limit(20).get()
+    return { entries: result.data.map(({ date, note }) => ({ date, note: note || {} })),
+        hasMore: result.data.length === 20, cursor: result.data[result.data.length - 1]?.date || '' }
+}
+
+export async function saveDiaryToCloud(date, note) {
+    requireUser()
+    await initCloud()
+    await saveDailyDocument(DIARIES_COLLECTION, date, { note })
+}
+
+export async function deleteDiaryFromCloud(date) {
+    requireUser()
+    validateDate(date)
+    await initCloud()
+    const collection = getDb().collection(DIARIES_COLLECTION)
+    const existing = await collection.where({ ...ownerCondition, date }).limit(1).get()
+    if (existing.data.length) {
+        const result = await collection.doc(existing.data[0]._id).remove()
+        if (result.stats.removed !== 1) throw new Error('记录已变化，请重新加载')
+    }
+}
+
+// 旧本地日记不含用户归属，必须由使用者确认后导入，已有云端日期不覆盖。
+export async function importLocalDiaries(notes) {
+    requireUser()
+    await initCloud()
+    let imported = 0
+    let skipped = 0
+    for (const [date, note] of Object.entries(notes)) {
+        validateDate(date)
+        const collection = getDb().collection(DIARIES_COLLECTION)
+        const existing = await collection.where({ ...ownerCondition, date }).limit(1).get()
+        if (existing.data.length) { skipped += 1; continue }
+        try {
+            await collection.add({ data: { date, note, createdAt: getDb().serverDate(), updatedAt: getDb().serverDate() } })
+            imported += 1
+        } catch (error) {
+            if (!/duplicate|E11000/i.test(error.errMsg || error.message || '')) throw error
+            skipped += 1
         }
     }
-    return null
+    return { imported, skipped }
 }

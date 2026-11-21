@@ -5,6 +5,9 @@
             <text class="page-title">我的日记</text>
             <button size="mini" @click="openToday">＋ 写今天</button>
         </view>
+        <!-- 私人云数据状态与旧日记导入入口，失败可重试且保留编辑草稿。 -->
+        <view v-if="statusText" class="empty-state" @click="loadDiaries">{{ statusText }}</view>
+        <button v-if="userId && hasLegacy" size="mini" :disabled="saving || loadingNotes" @click="importLegacy">导入本机旧日记</button>
         <view class="folder-grid" :style="gridStyle">
             <view v-for="entry in visibleEntries" :key="entry.id" class="folder-cell">
                 <DiaryFolder v-if="entry.id !== activeId" :key="geometry.scale" :geometry="geometry"
@@ -12,8 +15,8 @@
                     @open-change="openFolder(entry.id)" />
                     </view>
         </view>
-        <button v-if="visibleEntries.length < entries.length" size="mini" @click="visibleCount += 24">查看更多</button>
-        <text v-if="!entries.length" class="empty-state">还没有日记，先写下今天吧</text>
+        <button v-if="visibleEntries.length < entries.length || hasMore" size="mini" :loading="loadingNotes" :disabled="loadingNotes || saving" @click="loadMore">查看更多</button>
+        <text v-if="!entries.length && !loadingNotes && !loadFailed" class="empty-state">还没有日记，先写下今天吧</text>
 
         <view v-if="active" class="folder-layer">
             <!-- 阅读时隐藏文件夹操作区，放回后恢复同一个展开状态。 -->
@@ -50,20 +53,20 @@
                                         <button size="mini" @click="removeNode(index)">删除节点</button>
                                     </view>
                                     <text v-else-if="node.showTime" class="node-time">{{ node.time }}</text>
-                                    <textarea v-if="editing" v-model="node.text" auto-height maxlength="1000" placeholder="写下这一刻" />
+                                    <textarea v-if="editing" v-model="node.text" :disabled="saving" auto-height maxlength="1000" placeholder="写下这一刻" />
                                     <text v-else class="paper-text">{{ node.text }}</text>
                                 </view>
                                 <text v-if="!editing && !shownNodes.length" class="paper-text">还没有时间轴记录</text>
                                 <button v-if="editing" size="mini" @click="addNode">＋ 新增节点</button>
                             </view>
-                            <textarea v-else-if="editing" v-model="draftText" auto-height maxlength="1000" placeholder="写下你的日记" />
+                            <textarea v-else-if="editing" v-model="draftText" :disabled="saving" auto-height maxlength="1000" placeholder="写下你的日记" />
                             <text v-else class="paper-text">{{ active.note[focused] || '这张纸还是空白的' }}</text>
                         </view>
                     </scroll-view>
                     <view class="reader-actions">
                         <template v-if="editing">
-                            <button size="mini" @click="editing = false">取消</button>
-                            <button size="mini" @click="savePaper">保存</button>
+                            <button size="mini" :disabled="saving" @click="editing = false">取消</button>
+                            <button size="mini" :loading="saving" :disabled="saving" @click="savePaper">保存</button>
                         </template>
                         <template v-else>
                             <button size="mini" @click="deletePaper">删除纸张</button>
@@ -80,13 +83,15 @@
 </template>
 
 <script setup lang="ts">
-// 日记继续使用原有本地存储键。
+// 已登录日记以云数据库为准；旧本地数据仅在本人确认后导入。
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue'
 import { onShow, onBackPress } from '@dcloudio/uni-app'
 import DiaryFolder from '@/components/DiaryFolder.vue'
 import { diaryFolder, diaryGeometry, spreadLayout } from '@/config/diary-folder'
 
 import { STORAGE_KEYS } from '@/services/local-storage'
+import { loadCurrentUser, fetchDiaryPage, saveDiaryToCloud, deleteDiaryFromCloud, importLocalDiaries } from '@/utils/cloud.js'
+import { beijingDate } from '@/utils/mood'
 
 const storageKey = STORAGE_KEYS.diary
 const sections = [
@@ -106,6 +111,15 @@ type Note = Partial<Record<PaperKey, string>> & {
 }
 type Entry = { id: string; date: string; note: Note }
 const notes = ref<Record<string, Note>>({})
+// 云端按日期游标读取，页面不一次加载全部历史。
+const userId = ref('')
+const loadingNotes = ref(false)
+const saving = ref(false)
+const hasMore = ref(false)
+const cursor = ref('')
+const statusText = ref('')
+const loadFailed = ref(false)
+const hasLegacy = ref(false)
 const activeId = ref('')
 const folderOpen = ref(false)
 const focused = ref<PaperKey | ''>('')
@@ -150,10 +164,7 @@ const bounds = computed(() => ({ left: layout.value.stageLeft, top: layout.value
 const paperTitle = computed(() => sections.find(section => section.key === focused.value)?.label)
 const shownNodes = computed(() => editing.value ? draftNodes.value : readNodes(active.value?.note || {}))
 
-onShow(() => {
-    try { notes.value = uni.getStorageSync(storageKey) || {} }
-    catch { uni.showToast({ title: '读取日记失败', icon: 'none' }) }
-})
+onShow(loadDiaries)
 onBackPress(() => {
     if (timeTarget.value) { dismissTimePicker(); return true }
     if (focused.value) { closePaper(); return true }
@@ -161,19 +172,99 @@ onBackPress(() => {
     return false
 })
 
-function commit(entry: Entry, note?: Note) {
+// 切换账号先清空旧页面内容，读取失败不回退到其他账号的缓存。
+async function loadDiaries() {
+    if (loadingNotes.value || saving.value) return
+    loadingNotes.value = true
+    statusText.value = '正在读取日记…'
+    loadFailed.value = false
     try {
-        const current = uni.getStorageSync(storageKey) || {}
-        const next = { ...current }
+        const user = await loadCurrentUser()
+        const nextId = user?._id || ''
+        if (nextId !== userId.value) {
+            notes.value = {}
+            activeId.value = ''
+            folderOpen.value = false
+            focused.value = ''
+            editing.value = false
+        }
+        userId.value = nextId
+        if (editing.value) { statusText.value = ''; return }
+        hasLegacy.value = Object.keys(uni.getStorageSync(storageKey) || {}).length > 0
+        if (!userId.value) {
+            notes.value = uni.getStorageSync(storageKey) || {}
+            hasMore.value = false
+            statusText.value = '尚未登录，日记仅保存在本机；登录后可导入云端'
+            return
+        }
+        const page = await fetchDiaryPage()
+        notes.value = Object.fromEntries(page.entries.map((item: { date: string; note: Note }) => [item.date, item.note]))
+        cursor.value = page.cursor
+        hasMore.value = page.hasMore
+        visibleCount.value = 24
+        statusText.value = ''
+    } catch {
+        loadFailed.value = true
+        statusText.value = '读取日记失败，点击重试'
+    } finally {
+        loadingNotes.value = false
+    }
+}
+
+async function loadMore() {
+    if (loadingNotes.value || saving.value) return
+    if (visibleCount.value < entries.value.length) { visibleCount.value += 24; return }
+    if (!userId.value || !hasMore.value) return
+    loadingNotes.value = true
+    try {
+        const page = await fetchDiaryPage(cursor.value)
+        for (const item of page.entries) notes.value[item.date] = item.note
+        cursor.value = page.cursor
+        hasMore.value = page.hasMore
+        visibleCount.value += 24
+    } catch {
+        uni.showToast({ title: '读取失败，请再次点击查看更多', icon: 'none' })
+    } finally { loadingNotes.value = false }
+}
+
+async function importLegacy() {
+    if (saving.value || loadingNotes.value) return
+    const result = await new Promise<boolean>(resolve => uni.showModal({
+        title: '导入本机日记', content: '确认这些日记属于当前账号？已有云端日期会跳过，本机原件会保留。',
+        success: result => resolve(result.confirm), fail: () => resolve(false)
+    }))
+    if (!result) return
+    saving.value = true
+    try {
+        const result = await importLocalDiaries(uni.getStorageSync(storageKey) || {})
+        uni.showModal({ title: '导入完成', content: `新增 ${result.imported} 天，跳过已有 ${result.skipped} 天；本机原件已保留。`, showCancel: false })
+    } catch {
+        uni.showToast({ title: '导入未完成，原件保留，可重试', icon: 'none' })
+    } finally { saving.value = false }
+    await loadDiaries()
+}
+
+// 云端确认后才更新界面；失败不退出编辑状态、不丢弃草稿。
+async function commit(entry: Entry, note?: Note) {
+    if (saving.value || loadingNotes.value || loadFailed.value) return false
+    saving.value = true
+    try {
+        if (userId.value) {
+            if (uni.getStorageSync(STORAGE_KEYS.currentUser)?._id !== userId.value) throw new Error('账号已变化，请重新进入日记')
+            if (note) await saveDiaryToCloud(entry.date, note)
+            else await deleteDiaryFromCloud(entry.date)
+        }
+        const next = { ...notes.value }
         if (note) next[entry.date] = note
         else delete next[entry.date]
-        uni.setStorageSync(storageKey, next)
+        if (!userId.value) uni.setStorageSync(storageKey, next)
         notes.value = next
+        uni.showToast({ title: userId.value ? '已保存到云端' : '已保存到本机', icon: 'success' })
         return true
     } catch {
         uni.showToast({ title: '保存失败，请重试', icon: 'none' })
         return false
-    }
+    } finally { saving.value = false }
 }
 
 async function openFolder(id: string) {
@@ -182,13 +273,12 @@ async function openFolder(id: string) {
     await nextTick()
     if (activeId.value === id) folderOpen.value = true
 }
-function openToday() {
-    const now = new Date()
-    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    if (notes.value[date] || commit({ id: date, date, note: {} }, {})) void openFolder(date)
+async function openToday() {
+    const date = beijingDate()
+    if (notes.value[date] || await commit({ id: date, date, note: {} }, {})) void openFolder(date)
 }
 function closeFolder() {
-    if (focused.value) return
+    if (focused.value || saving.value) return
     folderOpen.value = false
 }
 function onMotionSettled() {
@@ -200,6 +290,7 @@ function readPaper(item: { key: string }) {
     if (paper) focused.value = paper.key
 }
 function closePaper() {
+    if (saving.value) return
     editing.value = false
     dismissTimePicker()
     focused.value = ''
@@ -224,15 +315,18 @@ function editPaper() {
     editing.value = true
 }
 function addNode() {
+    if (saving.value) return
     draftNodes.value.push({ id: `node-${Date.now()}-${nodeSequence++}`, text: '', showTime: true, time: '09:00' })
 }
 function moveNode(index: number, step: number) {
+    if (saving.value) return
     const target = index + step
     if (target < 0 || target >= draftNodes.value.length) return
     const [node] = draftNodes.value.splice(index, 1)
     draftNodes.value.splice(target, 0, node)
 }
 function toggleTime(index: number, event: { detail: { value: string[] } }) {
+    if (saving.value) return
     draftNodes.value[index].showTime = event.detail.value.includes('time')
 }
 // 节点按 ID 定位，取消选择时不修改原草稿。
@@ -255,9 +349,10 @@ function confirmDelete(content: string): Promise<boolean> {
     }))
 }
 async function removeNode(index: number) {
+    if (saving.value) return
     if (await confirmDelete('删除这个时间轴节点？保存后生效。')) draftNodes.value.splice(index, 1)
 }
-function savePaper() {
+async function savePaper() {
     const entry = active.value
     const key = focused.value
     if (!entry || !key) return
@@ -268,7 +363,7 @@ function savePaper() {
         delete note.timelineTime
         delete note.timelineEnabled
     } else note[key] = draftText.value
-    if (commit(entry, note)) editing.value = false
+    if (await commit(entry, note)) editing.value = false
 }
 async function deletePaper() {
     const entry = active.value
@@ -288,12 +383,12 @@ async function deletePaper() {
         delete note.timelineTime
         delete note.timelineEnabled
     }
-    if (commit(latest, note)) closePaper()
+    if (await commit(latest, note)) closePaper()
 }
 async function deleteDiary() {
     const entry = active.value
     if (!entry || !await confirmDelete(`删除 ${entry.date} 的整篇日记？`)) return
-    if (commit(entry)) {
+    if (await commit(entry)) {
         closePaper()
         folderOpen.value = false
         activeId.value = ''

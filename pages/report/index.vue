@@ -4,10 +4,12 @@
             <view class="year-icon"><image src="/static/images/icons/calendar.png" mode="aspectFit" /></view>
             <view>
                 <text class="year-title">近一年 · 按周统计</text>
-                <text class="year-caption">共 {{ weekCount }} 周（约1年）的心情概要</text>
+                <text class="year-caption">已记录 {{ records.length }} 天 · {{ weekCount }} 个完整周报</text>
             </view>
         </view>
 
+        <!-- 明确区分读取中、失败、未登录和真实空记录。 -->
+        <view v-if="statusText" class="empty-tip" @click="loadReport">{{ statusText }}</view>
         <view class="distribution-card">
             <text class="card-title">年度心情分布</text>
             <view class="distribution-grid">
@@ -38,10 +40,12 @@
 // 年度周报复用首页云端心情数据，只负责统计展示。
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { fetchMoodData, isCloudAvailable } from '@/utils/cloud.js'
+import { fetchMoodData, loadCurrentUser } from '@/utils/cloud.js'
+import { buildCompletedWeeks, recentYearRange } from '@/utils/mood'
 
 const records = ref([])
 const history = ref([])
+const statusText = ref('')
 const moods = ['很开心', '就这样', '不高兴']
 
 const weekCount = computed(() => history.value.length)
@@ -59,54 +63,25 @@ const distribution = computed(() => {
 onShow(loadReport)
 
 async function loadReport() {
-    if (!isCloudAvailable()) return
+    statusText.value = '正在读取心情…'
     try {
-        const data = await fetchMoodData()
+        if (!await loadCurrentUser()) {
+            records.value = []
+            history.value = []
+            statusText.value = '请先在“我的”中登录'
+            return
+        }
+        const range = recentYearRange()
+        const data = await fetchMoodData(range.start, range.end)
         records.value = data?.dailyRecords || []
         // 只按实际满 7 天的记录生成周报，避免未满一周时提前显示第 1 周。
         history.value = buildCompletedWeeks(records.value)
+        statusText.value = records.value.length ? '' : '近一年还没有心情记录'
     } catch (error) {
         records.value = []
         history.value = []
+        statusText.value = '读取失败，点击重试'
     }
-}
-
-function buildCompletedWeeks(dailyRecords) {
-    const grouped = {}
-    dailyRecords.forEach((record) => {
-        const date = new Date(`${record.date}T00:00:00`)
-        const monday = new Date(date)
-        const day = monday.getDay() || 7
-        monday.setDate(monday.getDate() - day + 1)
-        const weekKey = formatDate(monday)
-        if (!grouped[weekKey]) grouped[weekKey] = []
-        if (!grouped[weekKey].some((item) => item.date === record.date)) grouped[weekKey].push(record)
-    })
-
-    return Object.entries(grouped)
-        .filter(([, weekRecords]) => weekRecords.length >= 7)
-        .sort(([first], [second]) => second.localeCompare(first))
-        .map(([weekStart, weekRecords], index) => {
-            const end = new Date(`${weekStart}T00:00:00`)
-            end.setDate(end.getDate() + 6)
-            const counts = { '很开心': 0, '就这样': 0, '不高兴': 0 }
-            weekRecords.forEach((record) => {
-                if (counts[record.mood] !== undefined) counts[record.mood] += 1
-            })
-            const finalMood = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0]
-            return {
-                weekLabel: `第${index + 1}周`,
-                dateRange: `${weekStart} 至 ${formatDate(end)}`,
-                finalMood
-            }
-        })
-}
-
-function formatDate(date) {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
 }
 
 </script>
