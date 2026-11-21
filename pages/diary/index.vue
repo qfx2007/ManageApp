@@ -5,18 +5,21 @@
             <text class="page-title">我的日记</text>
             <button size="mini" @click="openToday">＋ 写今天</button>
         </view>
-        <!-- 私人云数据状态与旧日记导入入口，失败可重试且保留编辑草稿。 -->
-        <view v-if="statusText" class="empty-state" @click="loadDiaries">{{ statusText }}</view>
-        <button v-if="userId && hasLegacy" size="mini" :disabled="saving || loadingNotes" @click="importLegacy">导入本机旧日记</button>
-        <view class="folder-grid" :style="gridStyle">
-            <view v-for="entry in visibleEntries" :key="entry.id" class="folder-cell">
-                <DiaryFolder v-if="entry.id !== activeId" :key="geometry.scale" :geometry="geometry"
-                    :color="diaryFolder.color" :date="entry.date" :items="papers(entry.note)" :open="false"
-                    @open-change="openFolder(entry.id)" />
-                    </view>
-        </view>
-        <button v-if="visibleEntries.length < entries.length || hasMore" size="mini" :loading="loadingNotes" :disabled="loadingNotes || saving" @click="loadMore">查看更多</button>
-        <text v-if="!entries.length && !loadingNotes && !loadFailed" class="empty-state">还没有日记，先写下今天吧</text>
+        <!-- 整页读取与文件夹列表互斥，分页仍保留已有文件夹。 -->
+        <text v-if="readingDiaries" class="empty-state">正在读取日记…</text>
+        <template v-else>
+            <view v-if="statusText" class="empty-state" @click="loadDiaries">{{ statusText }}</view>
+            <button v-if="userId && hasLegacy" size="mini" :disabled="saving || loadingNotes" @click="importLegacy">导入本机旧日记</button>
+            <view class="folder-grid" :style="gridStyle">
+                <view v-for="entry in visibleEntries" :key="entry.id" class="folder-cell">
+                    <DiaryFolder v-if="entry.id !== activeId" :key="geometry.scale" :geometry="geometry"
+                        :color="diaryFolder.color" :date="entry.date" :items="papers(entry.note)" :open="false"
+                        @open-change="openFolder(entry.id)" />
+                </view>
+            </view>
+            <button v-if="visibleEntries.length < entries.length || hasMore" size="mini" :loading="loadingNotes" :disabled="loadingNotes || saving" @click="loadMore">查看更多</button>
+            <text v-if="!entries.length && !loadingNotes && !loadFailed" class="empty-state">还没有日记，先写下今天吧</text>
+        </template>
 
         <view v-if="active" class="folder-layer">
             <!-- 阅读时隐藏文件夹操作区，放回后恢复同一个展开状态。 -->
@@ -114,6 +117,8 @@ const notes = ref<Record<string, Note>>({})
 // 云端按日期游标读取，页面不一次加载全部历史。
 const userId = ref('')
 const loadingNotes = ref(false)
+// 进入页面默认等待读取，分页不切换整页显示。
+const readingDiaries = ref(true)
 const saving = ref(false)
 const hasMore = ref(false)
 const cursor = ref('')
@@ -176,7 +181,8 @@ onBackPress(() => {
 async function loadDiaries() {
     if (loadingNotes.value || saving.value) return
     loadingNotes.value = true
-    statusText.value = '正在读取日记…'
+    readingDiaries.value = true
+    statusText.value = ''
     loadFailed.value = false
     try {
         const user = await loadCurrentUser()
@@ -208,6 +214,7 @@ async function loadDiaries() {
         statusText.value = '读取日记失败，点击重试'
     } finally {
         loadingNotes.value = false
+        readingDiaries.value = false
     }
 }
 
