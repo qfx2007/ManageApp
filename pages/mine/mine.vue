@@ -230,7 +230,6 @@ export default {
         confirmLogout() {
             uni.removeStorageSync('currentUser')
             uni.removeStorageSync('cloudUserId')
-            uni.removeStorageSync('boundFriendUsername')
             uni.removeStorageSync('lastMoodSyncTime')
             uni.setStorageSync('isLoggedOut', true)
             this.currentUser = null

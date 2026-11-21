@@ -9,14 +9,12 @@
   },
   "pages": [
     { "path": "pages/index/index" },
-    { "path": "pages/remind/remind" },
     {
       "path": "pages/report/index",
       "style": {
         "navigationBarTitleText": "年度心情周报"
       }
     },
-    { "path": "pages/cottage/cottage" },
     { "path": "pages/rotate/rotate" },
     { "path": "pages/diary/index" },
     { "path": "pages/todo/todo" },
@@ -29,10 +27,6 @@
       {
         "pagePath": "pages/index/index",
         "text": "心情助手"
-      },
-      {
-        "pagePath": "pages/cottage/cottage",
-        "text": "好友互动"
       },
       {
         "pagePath": "pages/diary/index",

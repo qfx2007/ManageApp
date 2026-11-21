@@ -331,29 +331,3 @@ export async function fetchMoodData() {
     }
     return null
 }
-
-export async function fetchFriendMood(username) {
-    await initCloud()
-    const name = validateUsername(username)
-    const currentUser = uni.getStorageSync('currentUser')
-
-    if (currentUser && currentUser.username === name) {
-        throw new Error('不能查看自己的账号')
-    }
-
-    const database = getDb()
-    const res = await database.collection(USERS_COLLECTION)
-        .where({ username: name })
-        .field({
-            username: true,
-            weeklyHistory: true,
-            updateTime: true
-        })
-        .get()
-
-    if (res.data.length === 0) {
-        throw new Error('未找到该用户，请确认用户名是否正确')
-    }
-
-    return res.data[0]
-}
